@@ -12,9 +12,7 @@ user_step = {}
 
 START_MESSAGE = """🍬 **Привет! Я бот профессора Сладкова!** 🍬
 
-Добро пожаловать в увлекательное путешествие!
-
-Нажми кнопку «Начать приключение!», чтобы начать игру!"""
+Добро пожаловать в увлекательное путешествие!"""
 
 ADVENTURE_START = """✨ **Профессор Сладков** трудился над самым главным изобретением своей жизни — конфетой, которая делает любого ребёнка самым счастливым на свете. Он смешал жидкую карамель, волшебную пудру и каплю звёздного света. Рецепт был почти готов...
 
@@ -174,24 +172,24 @@ def webhook():
         return "OK", 200
     
     chat_id = data['message']['chat']['id']
-    text = data['message'].get('text', '').lower().strip()
+    text = data['message'].get('text', '').strip()
+    text_lower = text.lower()
     
-    # Команда /start
-    if text == '/start':
+    print(f"Получено сообщение: {text}")
+    
+    # Команда /start - сразу начинаем приключение!
+    if text_lower == '/start':
         user_step[chat_id] = 1
         send_message(chat_id, START_MESSAGE)
-        return "OK", 200
-    
-    # Кнопка "Начать приключение!" или текст
-    if text == 'начать приключение!' or text == 'начать приключение':
-        user_step[chat_id] = 1
+        # Сразу отправляем начало приключения
         send_message(chat_id, STEPS[1]["question"])
         return "OK", 200
     
     # Команда /reset
-    if text == '/reset':
+    if text_lower == '/reset':
         user_step[chat_id] = 1
-        send_message(chat_id, "🔄 Квест сброшен! Давай начнём заново!\n\n" + START_MESSAGE)
+        send_message(chat_id, "🔄 Квест сброшен! Давай начнём заново!")
+        send_message(chat_id, STEPS[1]["question"])
         return "OK", 200
     
     # Получаем текущий шаг
@@ -201,8 +199,10 @@ def webhook():
         send_message(chat_id, "🍬 Напиши /start, чтобы начать приключение!")
         return "OK", 200
     
-    # Проверяем ответ
-    if text == STEPS[step]["answer"]:
+    # Проверяем ответ (сравниваем с правильным ответом текущего шага)
+    correct_answer = STEPS[step]["answer"]
+    
+    if text_lower == correct_answer:
         send_message(chat_id, STEPS[step]["success"])
         next_step = STEPS[step]["next"]
         if next_step == 0:
@@ -229,8 +229,9 @@ if __name__ == '__main__':
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
     if render_url:
         webhook_url = f"{render_url}/webhook"
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/setWebhook", json={"url": webhook_url})
+        response = requests.post(f"https://api.telegram.org/bot{TOKEN}/setWebhook", json={"url": webhook_url})
         print(f"✅ Webhook установлен на {webhook_url}")
+        print(f"Ответ Telegram: {response.json()}")
     
     print(f"🚀 Бот запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)

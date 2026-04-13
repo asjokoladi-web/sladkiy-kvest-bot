@@ -1,0 +1,209 @@
+# Бот для IDLE - НЕ ТРЕБУЕТ УСТАНОВКИ БИБЛИОТЕК!
+# Использует только стандартный модуль urllib
+
+import urllib.request
+import urllib.parse
+import json
+import time
+import sys
+
+# ========== НАСТРОЙКИ ==========
+# ЗАМЕНИ НА СВОЙ ТОКЕН ОТ @BotFather!
+BOT_TOKEN = "8083801428:AAGGrwyVB3TSbLpI0plHSGnOgjUai5PZics"
+
+if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+    print("❌ ОШИБКА: Ты не заменил BOT_TOKEN на свой токен!")
+    print("Получи токен у @BotFather в Telegram и вставь его в код.")
+    sys.exit(1)
+
+# Хранилище состояний пользователей
+user_states = {}
+
+# Правильные ответы
+ANSWERS = {
+    1: "воздушные зефирки",
+    2: "карамелька",
+    3: "память",
+    4: "конфета",
+    5: "баланс",
+    6: "зефирка",
+    7: "цвет",
+    8: "мармелад",
+    9: "спаси сладкую лабораторию",
+    10: "победа"
+}
+
+# Сообщения бота
+MESSAGES = {
+    1: "✅ Правильно!\n\nQR-код с игрой «Сладкий лабиринт» лежит в раскраске на 1 странице.\nСканируй код, сыграй в игру. После победы ты получишь кодовое слово — введи его.",
+    2: "✅ Верно! Ты прошёл первое испытание.\n\nСледующее задание ждёт тебя на второй странице раскраски.\nПереходи ко второму квесту и напиши секретное слово.",
+    3: "✅ Верно!\n\nИщи второй QR-код игры под левым клапаном дна коробки.\nСканируй его и сыграй в игру «Мемори».\nПосле победы получишь секретное слово — введи его.",
+    4: "✅ Верно! Ты прошёл второе испытание.\n\nСледующее — на третьей странице раскраски.\nПереходи к третьему квесту и напиши секретное слово.",
+    5: "✅ Верно!\n\nЧтобы открыть QR-код следующей игры, загляни за письмо профессора Сладкова.\nСканируй код, сыграй в игру «Баланс».\nПосле победы введи секретное слово.",
+    6: "✅ Молодец! Ты прошёл третье испытание.\n\nСледующее ждёт тебя на четвёртой странице раскраски.\nПереходи к четвёртому квесту, разгадай его и напиши секретное слово.",
+    7: "✅ Верно!\n\n«Закрашивать клетки — это старый шпионский метод!»\nQR-код следующей игры — в левом боковом клапане коробки.\nСканируй его, сыграй в игру «Цветной миксер».\nПосле победы введи секретное слово.",
+    8: "✅ Молодец! Ты прошёл четвёртое испытание.\n\nВпереди встреча с самим Королём сахарных троллей.\nПереходи к 5 испытанию! Пройди квест и напиши секретное слово.",
+    9: "✅ Отлично, ты справился и с этим заданием!\n\nНа 6 странице раскраски ты найдёшь QR-код для битвы с Королём сахарных троллей.\nЖелаю лёгкой и быстрой победы!\nКогда победишь — возвращайся с кодовым словом, чтобы узнать, где главный приз.",
+    10: "🎉 ПОЗДРАВЛЯЮ, МОЙ ЮНЫЙ ДРУГ!\n\nТы прогнал Короля сахарных троллей из лаборатории, спас сладости и профессора Сладкова.\n\nА теперь усаживайся поудобнее и смотри мультфильм, чтобы узнать, где профессор спрятал главный приз!\n\n👉 https://youtu.be/BDNfNYRaexg"
+}
+
+START_MESSAGE = """🍬 Привет, юный исследователь!
+
+Профессор Сладков забыл, куда положил первый QR-код. Он помнит, что положил его где-то в коробке.
+
+**Посмотри, какая сладость в самой большой упаковке?**
+Напиши её название в бот!
+
+📌 Подсказка: в слове 16 букв"""
+
+# Функции работы с Telegram API (без сторонних библиотек)
+def send_message(chat_id, text):
+    """Отправляет сообщение используя только urllib"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    post_data = urllib.parse.urlencode(data).encode('utf-8')
+    try:
+        req = urllib.request.Request(url, data=post_data, method='POST')
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except Exception as e:
+        print(f"Ошибка отправки: {e}")
+        return None
+
+def get_updates(offset=None):
+    """Получает обновления используя только urllib"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    if offset:
+        url += f"?offset={offset}&timeout=30"
+    else:
+        url += "?timeout=30"
+    
+    try:
+        with urllib.request.urlopen(url, timeout=35) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data.get("result", [])
+    except Exception as e:
+        print(f"Ошибка получения: {e}")
+        return []
+
+def test_bot():
+    """Проверяет подключение к боту"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            if data.get("ok"):
+                name = data["result"]["first_name"]
+                username = data["result"]["username"]
+                print(f"✅ Бот успешно подключён!")
+                print(f"   Имя: {name}")
+                print(f"   Username: @{username}")
+                print(f"\n👉 Найди бота в Telegram и напиши /start")
+                return True
+    except Exception as e:
+        print(f"❌ Ошибка подключения: {e}")
+    return False
+
+def main():
+    print("=" * 50)
+    print("🍬 КВЕСТ-БОТ ПРОФЕССОРА СЛАДКОВА")
+    print("=" * 50)
+    
+    if not test_bot():
+        print("\n❌ Не удалось подключиться к Telegram API.")
+        print("Проверь:")
+        print("1. Токен бота правильный?")
+        print("2. Есть интернет?")
+        print("3. Бот создан в @BotFather?")
+        sys.exit(1)
+    
+    print("\n✅ Бот запущен и ждёт сообщений...")
+    print("Для остановки нажми Ctrl+C в этом окне\n")
+    
+    last_update_id = 0
+    
+    try:
+        while True:
+            updates = get_updates(last_update_id + 1)
+            
+            for update in updates:
+                last_update_id = update["update_id"]
+                message = update.get("message")
+                
+                if not message:
+                    continue
+                
+                chat_id = message["chat"]["id"]
+                user_name = message["chat"].get("first_name", "Друг")
+                text = message.get("text", "").lower().strip()
+                
+                print(f"📨 Сообщение от {user_name}: {text}")
+                
+                if text == "/start":
+                    user_states[chat_id] = 1
+                    send_message(chat_id, START_MESSAGE)
+                    print(f"   → Отправлен вопрос №1")
+                    continue
+                
+                if text == "/cancel":
+                    user_states[chat_id] = 0
+                    send_message(chat_id, "❌ Квест прерван. Напиши /start, чтобы начать заново.")
+                    print(f"   → Квест сброшен")
+                    continue
+                
+                if text == "/help":
+                    help_text = """📖 Доступные команды:
+/start - начать квест заново
+/cancel - прервать текущий квест
+/help - показать эту справку
+
+Правильные ответы (вводи по порядку):
+1. Воздушные Зефирки
+2. Карамелька
+3. Память
+4. Конфета
+5. Баланс
+6. Зефирка
+7. Цвет
+8. Мармелад
+9. спаси сладкую лабораторию
+10. Победа"""
+                    send_message(chat_id, help_text)
+                    continue
+                
+                current_step = user_states.get(chat_id, 0)
+                
+                if current_step == 0:
+                    send_message(chat_id, "Напиши /start, чтобы начать квест!")
+                    print(f"   → Пользователь не в квесте")
+                    continue
+                
+                if current_step in ANSWERS:
+                    if text == ANSWERS[current_step]:
+                        send_message(chat_id, MESSAGES[current_step])
+                        print(f"   → ✅ Правильно! Шаг {current_step} пройден")
+                        
+                        if current_step == 10:
+                            user_states[chat_id] = 0
+                            print(f"   → 🎉 КВЕСТ ЗАВЕРШЁН!")
+                        else:
+                            user_states[chat_id] = current_step + 1
+                            print(f"   → Переход к шагу {current_step + 1}")
+                    else:
+                        send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
+                        print(f"   → ❌ Неправильно: '{text}'")
+            
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print("\n\n🛑 Бот остановлен")
+    except Exception as e:
+        print(f"\n❌ Ошибка: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

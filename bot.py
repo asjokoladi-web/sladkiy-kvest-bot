@@ -1,172 +1,160 @@
 import os
+import json
 import requests
 from flask import Flask, request
 
 app = Flask(__name__)
-TOKEN = os.environ.get("BOT_TOKEN")
 
-# Храним этап каждого пользователя
-user_step = {}
+# Токен бота из переменных окружения
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise Exception("BOT_TOKEN не задан!")
+
+# Базовый URL API Telegram
+API_URL = f"https://api.telegram.org/bot{TOKEN}"
+
+# Хранилище этапов квеста (в памяти)
+user_steps = {}
+
+# Правильные ответы (все в нижнем регистре)
+ANSWERS = {
+    1: "воздушные зефирки",
+    2: "карамелька",
+    3: "память",
+    4: "конфета",
+    5: "баланс",
+    6: "зефирка",
+    7: "цвет",
+    8: "мармелад",
+    9: "спаси сладкую лабораторию",
+    10: "победа"
+}
+
+# Сообщения бота
+MESSAGES = {
+    0: "🍬 Привет, юный исследователь!\n\nПрофессор Сладков забыл, куда положил первый QR-код. Он помнит, что положил его где-то в коробке.\n\n**Посмотри, какая сладость в самой большой упаковке?**\nНапиши её название в бот!\n\n📌 Подсказка: в слове 16 букв",
+    
+    1: "✅ Правильно!\n\nQR-код с игрой «Сладкий лабиринт» лежит в раскраске на 1 странице.\nСканируй код, сыграй в игру. После победы ты получишь кодовое слово — введи его.",
+    
+    2: "✅ Верно! Ты прошёл первое испытание.\n\nСледующее задание ждёт тебя на второй странице раскраски.\nПереходи ко второму квесту и напиши секретное слово.",
+    
+    3: "✅ Верно!\n\nИщи второй QR-код игры под левым клапаном дна коробки.\nСканируй его и сыграй в игру «Мемори».\nПосле победы получишь секретное слово — введи его.",
+    
+    4: "✅ Верно! Ты прошёл второе испытание.\n\nСледующее — на третьей странице раскраски.\nПереходи к третьему квесту и напиши секретное слово.",
+    
+    5: "✅ Верно!\n\nЧтобы открыть QR-код следующей игры, загляни за письмо профессора Сладкова.\nСканируй код, сыграй в игру «Баланс».\nПосле победы введи секретное слово.",
+    
+    6: "✅ Молодец! Ты прошёл третье испытание.\n\nСледующее ждёт тебя на четвёртой странице раскраски.\nПереходи к четвёртому квесту, разгадай его и напиши секретное слово.",
+    
+    7: "✅ Верно!\n\n«Закрашивать клетки — это старый шпионский метод!»\nQR-код следующей игры — в левом боковом клапане коробки.\nСканируй его, сыграй в игру «Цветной миксер».\nПосле победы введи секретное слово.",
+    
+    8: "✅ Молодец! Ты прошёл четвёртое испытание.\n\nВпереди встреча с самим Королём сахарных троллей.\nПереходи к 5 испытанию! Пройди квест и напиши секретное слово.",
+    
+    9: "✅ Отлично, ты справился и с этим заданием!\n\nНа 6 странице раскраски ты найдёшь QR-код для битвы с Королём сахарных троллей.\nЖелаю лёгкой и быстрой победы!\nКогда победишь — возвращайся с кодовым словом.",
+    
+    10: "🎉 ПОЗДРАВЛЯЮ, МОЙ ЮНЫЙ ДРУГ!\n\nТы прогнал Короля сахарных троллей из лаборатории, спас сладости и профессора Сладкова.\n\nА теперь смотри мультфильм, чтобы узнать, где профессор спрятал главный приз!\n\n👉 https://youtu.be/BDNfNYRaexg"
+}
+
+def send_message(chat_id, text):
+    """Отправляет сообщение в Telegram"""
+    url = f"{API_URL}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=data, timeout=10)
+        return response.json()
+    except Exception as e:
+        print(f"Ошибка отправки: {e}")
+        return None
+
+def set_webhook(url):
+    """Устанавливает веб-хук"""
+    webhook_url = f"{API_URL}/setWebhook"
+    data = {"url": url}
+    try:
+        response = requests.post(webhook_url, json=data, timeout=10)
+        print(f"Webhook установлен: {response.json()}")
+        return response.json()
+    except Exception as e:
+        print(f"Ошибка установки webhook: {e}")
+        return None
+
+@app.route('/healthcheck', methods=['GET'])
+def healthcheck():
+    return "OK", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
-    if not data or 'message' not in data:
-        return "OK", 200
-    
-    chat_id = data['message']['chat']['id']
-    text = data['message'].get('text', '').lower().strip()
-    
-    # Команда /start
-    if text == '/start':
-        send_message(chat_id, 
-            "🍬 Привет, юный исследователь!\n\n"
-            "Профессор Сладков забыл, куда положил первый QR-код. Он помнит, что положил его где-то в коробке.\n\n"
-            "**Посмотри, какая сладость в самой большой упаковке?**\n"
-            "Напиши её название в бот!\n\n"
-            "📌 Подсказка: в слове 16 букв")
-        user_step[chat_id] = 1
-        return "OK", 200
-    
-    # Проверка ответа на первый вопрос
-    if user_step.get(chat_id) == 1:
-        if text == "воздушные зефирки":
-            send_message(chat_id, 
-                "✅ Правильно!\n\n"
-                "QR-код с игрой «Сладкий лабиринт» лежит в раскраске на 1 странице.\n"
-                "Сканируй код, сыграй в игру. После победы ты получишь кодовое слово — введи его.")
-            user_step[chat_id] = 2
-        else:
-            send_message(chat_id, "❌ Неправильно, попробуй ещё раз!")
-        return "OK", 200
-    
-    # Проверка ответа на второй вопрос (Карамелька)
-    if user_step.get(chat_id) == 2:
-        if text == "карамелька":
-            send_message(chat_id, 
-                "✅ Верно! Ты прошёл первое испытание.\n\n"
-                "Следующее задание ждёт тебя на второй странице раскраски.\n"
-                "Переходи ко второму квесту и напиши секретное слово.")
-            user_step[chat_id] = 3
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на третий вопрос (Память)
-    if user_step.get(chat_id) == 3:
-        if text == "память":
-            send_message(chat_id, 
-                "✅ Верно!\n\n"
-                "Ищи второй QR-код игры под левым клапаном дна коробки.\n"
-                "Сканируй его и сыграй в игру «Мемори».\n"
-                "После победы получишь секретное слово — введи его.")
-            user_step[chat_id] = 4
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на четвёртый вопрос (Конфета)
-    if user_step.get(chat_id) == 4:
-        if text == "конфета":
-            send_message(chat_id, 
-                "✅ Верно! Ты прошёл второе испытание.\n\n"
-                "Следующее — на третьей странице раскраски.\n"
-                "Переходи к третьему квесту и напиши секретное слово.")
-            user_step[chat_id] = 5
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на пятый вопрос (Баланс)
-    if user_step.get(chat_id) == 5:
-        if text == "баланс":
-            send_message(chat_id, 
-                "✅ Верно!\n\n"
-                "Чтобы открыть QR-код следующей игры, загляни за письмо профессора Сладкова.\n"
-                "Сканируй код, сыграй в игру «Баланс».\n"
-                "После победы введи секретное слово.")
-            user_step[chat_id] = 6
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на шестой вопрос (Зефирка)
-    if user_step.get(chat_id) == 6:
-        if text == "зефирка":
-            send_message(chat_id, 
-                "✅ Молодец! Ты прошёл третье испытание.\n\n"
-                "Следующее ждёт тебя на четвёртой странице раскраски.\n"
-                "Переходи к четвёртому квесту, разгадай его и напиши секретное слово.")
-            user_step[chat_id] = 7
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на седьмой вопрос (Цвет)
-    if user_step.get(chat_id) == 7:
-        if text == "цвет":
-            send_message(chat_id, 
-                "✅ Верно!\n\n"
-                "«Закрашивать клетки — это старый шпионский метод!»\n"
-                "QR-код следующей игры — в левом боковом клапане коробки.\n"
-                "Сканируй его, сыграй в игру «Цветной миксер».\n"
-                "После победы введи секретное слово.")
-            user_step[chat_id] = 8
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на восьмой вопрос (Мармелад)
-    if user_step.get(chat_id) == 8:
-        if text == "мармелад":
-            send_message(chat_id, 
-                "✅ Молодец! Ты прошёл четвёртое испытание.\n\n"
-                "Впереди встреча с самим Королём сахарных троллей.\n"
-                "Переходи к 5 испытанию! Пройди квест и напиши секретное слово.")
-            user_step[chat_id] = 9
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на девятый вопрос (спаси сладкую лабораторию)
-    if user_step.get(chat_id) == 9:
-        if text == "спаси сладкую лабораторию":
-            send_message(chat_id, 
-                "✅ Отлично, ты справился и с этим заданием!\n\n"
-                "На 6 странице раскраски ты найдёшь QR-код для битвы с Королём сахарных троллей.\n"
-                "Желаю лёгкой и быстрой победы!\n"
-                "Когда победишь — возвращайся с кодовым словом.")
-            user_step[chat_id] = 10
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    # Проверка ответа на десятый вопрос (Победа) + финал
-    if user_step.get(chat_id) == 10:
-        if text == "победа":
-            send_message(chat_id, 
-                "🎉 ПОЗДРАВЛЯЮ, МОЙ ЮНЫЙ ДРУГ!\n\n"
-                "Ты прогнал Короля сахарных троллей из лаборатории, спас сладости и профессора Сладкова.\n\n"
-                "А теперь смотри мультфильм, чтобы узнать, где профессор спрятал главный приз!\n\n"
-                "👉 https://youtu.be/BDNfNYRaexg")
-            user_step[chat_id] = 0
-        else:
-            send_message(chat_id, "❌ Неверно, попробуй ещё раз.")
-        return "OK", 200
-    
-    return "OK", 200
-
-@app.route('/healthcheck')
-def health():
-    return "OK", 200
-
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    """Обрабатывает входящие сообщения"""
     try:
-        requests.post(url, json={"chat_id": chat_id, "text": text})
+        data = request.get_json()
+        if not data or 'message' not in data:
+            return "OK", 200
+        
+        message = data['message']
+        chat_id = message['chat']['id']
+        text = message.get('text', '').lower().strip()
+        
+        print(f"Получено сообщение от {chat_id}: {text}")
+        
+        # Команда /start - начинаем квест
+        if text == '/start':
+            user_steps[chat_id] = 1  # Начинаем с первого вопроса
+            send_message(chat_id, MESSAGES[0])
+            return "OK", 200
+        
+        # Команда /reset - сброс квеста
+        if text == '/reset':
+            user_steps[chat_id] = 1
+            send_message(chat_id, "🔄 Квест сброшен! Давай начнём заново!\n\n" + MESSAGES[0])
+            return "OK", 200
+        
+        # Получаем текущий этап пользователя
+        current_step = user_steps.get(chat_id, 0)
+        
+        # Если пользователь не в квесте
+        if current_step == 0:
+            send_message(chat_id, "Напиши /start, чтобы начать квест!")
+            return "OK", 200
+        
+        # Проверяем ответ
+        expected_answer = ANSWERS.get(current_step)
+        
+        if text == expected_answer:
+            # Правильный ответ
+            send_message(chat_id, MESSAGES[current_step])
+            
+            if current_step == 10:
+                # Квест завершён
+                user_steps[chat_id] = 0
+            else:
+                # Переходим к следующему шагу
+                user_steps[chat_id] = current_step + 1
+        else:
+            # Неправильный ответ
+            send_message(chat_id, "❌ Неправильно, попробуй ещё раз!")
+        
+        return "OK", 200
+        
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка в webhook: {e}")
+        return "OK", 200
+
+@app.route('/', methods=['GET'])
+def home():
+    return "Бот работает!", 200
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))
+    
+    # Получаем URL от Render
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    if render_url:
+        webhook_url = f"{render_url}/webhook"
+        set_webhook(webhook_url)
+    
+    print(f"Запуск бота на порту {port}")
     app.run(host='0.0.0.0', port=port)

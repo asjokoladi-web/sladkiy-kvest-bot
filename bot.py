@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
@@ -50,7 +51,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Квест прерван. Напиши /start чтобы начать заново.")
     return ConversationHandler.END
 
-def main():
+async def main():
     app = Application.builder().token(TOKEN).build()
     
     conv_handler = ConversationHandler(
@@ -64,7 +65,37 @@ def main():
     app.add_handler(conv_handler)
     
     print("Бот запущен на порту", PORT)
-    app.run_webhook(listen="0.0.0.0", port=PORT, url_path="/telegram", webhook_url=f"{URL}/telegram")
+    
+    # Запускаем вебхук
+    await app.initialize()
+    await app.bot.set_webhook(url=f"{URL}/telegram", allowed_updates=Update.ALL_TYPES)
+    print(f"Webhook установлен на {URL}/telegram")
+    
+    # Запускаем сервер
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.requests import Request
+    from starlette.responses import Response, PlainTextResponse
+    import uvicorn
+    
+    async def telegram_webhook(request: Request) -> Response:
+        """Обработка входящих обновлений от Telegram"""
+        data = await request.json()
+        update = Update.de_json(data, app.bot)
+        await app.process_update(update)
+        return Response()
+    
+    async def health_check(request: Request) -> PlainTextResponse:
+        return PlainTextResponse("OK")
+    
+    starlette_app = Starlette(routes=[
+        Route("/telegram", telegram_webhook, methods=["POST"]),
+        Route("/healthcheck", health_check, methods=["GET"]),
+    ])
+    
+    config = uvicorn.Config(starlette_app, host="0.0.0.0", port=PORT, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

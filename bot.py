@@ -139,7 +139,10 @@ STEP_10_SUCCESS = """🎉 **ПОЗДРАВЛЯЮ, МОЙ ЮНЫЙ ДРУГ!** �
 
 А теперь усаживайся поудобнее и смотри мультфильм, чтобы узнать, где профессор спрятал главный приз!
 
-🎬 https://youtu.be/BDNfNYRaexg"""
+🎬 https://youtu.be/BDNfNYRaexg
+
+---
+🍬 **Хочешь пройти квест ещё раз?** Напиши /start, и мы начнём новое приключение! 🍬"""
 
 # ============ ЛОГИКА ЭТАПОВ ============
 
@@ -177,18 +180,10 @@ def webhook():
     
     print(f"Получено сообщение: {text}")
     
-    # Команда /start - сразу начинаем приключение!
+    # Команда /start - начинаем приключение (сбрасываем прогресс)
     if text_lower == '/start':
         user_step[chat_id] = 1
         send_message(chat_id, START_MESSAGE)
-        # Сразу отправляем начало приключения
-        send_message(chat_id, STEPS[1]["question"])
-        return "OK", 200
-    
-    # Команда /reset
-    if text_lower == '/reset':
-        user_step[chat_id] = 1
-        send_message(chat_id, "🔄 Квест сброшен! Давай начнём заново!")
         send_message(chat_id, STEPS[1]["question"])
         return "OK", 200
     
@@ -196,16 +191,17 @@ def webhook():
     step = user_step.get(chat_id, 0)
     
     if step == 0:
-        send_message(chat_id, "🍬 Напиши /start, чтобы начать приключение!")
+        send_message(chat_id, "🍬 Напиши /start, чтобы начать приключение! 🍬")
         return "OK", 200
     
-    # Проверяем ответ (сравниваем с правильным ответом текущего шага)
+    # Проверяем ответ
     correct_answer = STEPS[step]["answer"]
     
     if text_lower == correct_answer:
         send_message(chat_id, STEPS[step]["success"])
         next_step = STEPS[step]["next"]
         if next_step == 0:
+            # Квест завершён, пользователь может начать заново через /start
             user_step[chat_id] = 0
         else:
             user_step[chat_id] = next_step
